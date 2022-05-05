@@ -4,10 +4,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
+import java.util.*;
 
 public class redditParser {
     private String baseURL;
@@ -17,8 +14,24 @@ public class redditParser {
     Map<String, String> countryLinks; // key is country, value is URL of country page
     private ArrayList<String> countryList;
 
-    private LinkedList<String> capsPostLinks = new LinkedList();
-    private LinkedList<String> academicPostLinks;
+    private LinkedList<String> capsPostLinks = new LinkedList<String>();
+    private LinkedList<String> academicPostLinks = new LinkedList<String>();
+
+    // for storing the upvotes and points
+    private LinkedList<Integer> capsPostUpvoteRatios = new LinkedList<Integer>();
+    private LinkedList<Integer> capsPostPoints = new LinkedList<Integer>();
+    private LinkedList<Integer> academicPostUpvoteRatios = new LinkedList<Integer>();
+    private LinkedList<Integer> academicPostPoints = new LinkedList<Integer>();
+
+    // for extracting the posts' text
+    private ArrayList<String> capsPostText = new ArrayList<String>();
+    private ArrayList<String> academicPostText = new ArrayList<String>();
+
+    // for the affiliation network graph
+    private HashSet<String> capsUsers = new HashSet<String>();
+    private HashSet<String> academicUsers = new HashSet<String>();
+    private ArrayList<String> allUsers = new ArrayList<String>();
+    private int[][] affiliationNetwork;
 
     /*
      * Constructor that initializes the base URL and loads
@@ -32,46 +45,20 @@ public class redditParser {
         } catch (IOException e) {
 //            System.out.println("Could not connect to link");
         }
-        this.countryList = new ArrayList<String>();
-        this.countryLinks = new HashMap<String, String>();
 
-        this.academicPostLinks = new LinkedList<String>();
-
-        // setupCountries();
+        getCapsPosts();
+        getAcademicPosts();
     }
 
     /*
-     * Setup country map and list with URLs of country pages, called in constructor method
+     * Get all the posts that refer to CAPS
      */
-    private void setupCountries() {
-        String countryListURL = this.baseURL + "field/map-references/";
-        System.out.println(countryListURL);    // check we have the right URL
-        try {
-            this.currentDoc = Jsoup.connect(countryListURL).get();
-        }
-        catch (IOException e) {
-            System.out.println("Couldn't connect to map references page");
-        }
-
-        Elements countries = this.currentDoc.select("h2.h3");  //gets all <h3> country tags
-        for (Element country : countries) {
-            Elements aTag = country.select("a");  //links come in <a> tags typically
-            Element a = aTag.get(0);
-            String countryURL = a.attr("href");
-            String countryName = a.text();
-
-            this.countryLinks.put(countryName, "https://www.cia.gov" + countryURL);
-            this.countryList.add(countryName);
-        }
-    }
-
     public void getCapsPosts() {
         String nextPageLink = "https://old.reddit.com/r/UPenn/search?q=caps&restrict_sr=on&include_over_18=on&sort=relevance&t=all";
         boolean firstTime = true;
         while (nextPageLink != null) {
             try {
                 this.currentDoc = Jsoup.connect(nextPageLink).get();
-//                System.out.println("went to next page");
             } catch (IOException e) {
                 return;
             }
@@ -84,7 +71,6 @@ public class redditParser {
                     this.capsPostLinks.add(postURL);
                 }
             }
-
             Elements nextButton = this.currentDoc.getElementsByClass("nextprev");
             if (nextButton.size() == 0) {
                 nextPageLink = null;
@@ -100,9 +86,90 @@ public class redditParser {
                 }
             }
         }
+    }
 
-        System.out.println(this.capsPostLinks);
-        System.out.println(this.capsPostLinks.size());
+    /*
+     * pass in true for CAPS posts, false for academic posts
+     */
+    public void getPostPointsAndUpvoteRatio(boolean caps) {
+        LinkedList<String> postLinks = new LinkedList<String>();
+        if (caps) {
+            postLinks = this.capsPostLinks;
+        } else {
+            postLinks = this.academicPostLinks;
+        }
+
+        for (String postLink : postLinks) {
+            try {
+                this.currentDoc = Jsoup.connect(postLink).get();
+            } catch (IOException e) {
+                return;
+            }
+
+            Elements scoreTags = this.currentDoc.getElementsByClass("score");
+            for (Element sTag : scoreTags) {
+                if (sTag.text().contains("upvoted")) {
+                    String[] splitByPoints = sTag.text().split(" point");
+                    String[] splitByP = sTag.text().split("\\(");
+                    if (caps) {
+                        capsPostPoints.add(Integer.parseInt(splitByPoints[0]));
+                        capsPostUpvoteRatios.add(Integer.parseInt(splitByP[1].split("%")[0]));
+                    } else {
+                        academicPostPoints.add(Integer.parseInt(splitByPoints[0]));
+                        academicPostUpvoteRatios.add(Integer.parseInt(splitByP[1].split("%")[0]));
+                    }
+                }
+            }
+        }
+
+        if (caps) {
+            System.out.println("Caps Points: " + capsPostPoints);
+            System.out.println("Caps Upvote Ratios: " + capsPostUpvoteRatios);
+        } else {
+            System.out.println("Academic Points: " + academicPostPoints);
+            System.out.println("Academic Upvote Ratios: " + academicPostUpvoteRatios);
+        }
+    }
+
+    /*
+     * pass in true for CAPS posts, false for academic posts
+     */
+    public ArrayList<String> getPostsText(boolean caps) {
+        LinkedList<String> postLinks = new LinkedList<String>();
+        ArrayList<String> postText = new ArrayList<String>();
+        if (caps) {
+            postLinks = this.capsPostLinks;
+        } else {
+            postLinks = this.academicPostLinks;
+        }
+        for (String postLink : postLinks) {
+            try {
+                this.currentDoc = Jsoup.connect(postLink).get();
+            } catch (IOException e) {
+                System.out.println("failed to connect to post page");
+                return null;
+            }
+            Element titleTag = this.currentDoc.select("a[data-event-action='title']").first();
+            Element bodyDivTag = this.currentDoc.getElementsByClass("expando").first();
+            if (titleTag == null) {
+                postText.add("||SEPARATOR||");
+                continue;
+            }
+            String currPostText = "||SEPARATOR||" + titleTag.text().replaceAll("\"\'", "");
+            if (bodyDivTag != null) {
+                Element formTag = bodyDivTag.select("form").first();
+                if (formTag == null) { postText.add("||SEPARATOR||" + currPostText); continue; }
+                Element div1Tag = formTag.select("div").first();
+                if (div1Tag == null) { postText.add("||SEPARATOR||" + currPostText); continue; }
+                Element div2Tag = div1Tag.select("div").first();
+                if (div2Tag == null) { postText.add("||SEPARATOR||" + currPostText); continue; }
+                Element pTag = div2Tag.select("p").first();
+                if (pTag == null) { postText.add("||SEPARATOR||" + currPostText); continue; }
+                currPostText = currPostText + " " + pTag.text().replaceAll("\"\'", "");
+            }
+            postText.add(currPostText);
+        }
+        return postText;
     }
 
     public void getAcademicPosts() {
@@ -111,10 +178,7 @@ public class redditParser {
         while (nextPageLink != null) {
             try {
                 this.currentDoc = Jsoup.connect(nextPageLink).get();
-                // System.out.println(this.currentDoc);
-//                System.out.println("went to next page");
             } catch (IOException e) {
-                //System.out.println("Could not connect to link");
                 return;
             }
             Elements aTags = this.currentDoc.select("span:contains(Academic/Career)");
@@ -139,4 +203,67 @@ public class redditParser {
         System.out.println(this.academicPostLinks.size());
     }
 
+    public void getUsersForGraph() {
+        for (String postLink : this.capsPostLinks) {
+            try {
+                this.currentDoc = Jsoup.connect(postLink).get();
+            } catch (IOException e) {
+                return;
+            }
+//            Element aTag = this.currentDoc.select("a[href*=https://old.reddit.com/user/]").first();
+            Element pTag = this.currentDoc.getElementsByClass("tagline").first();
+            if (pTag == null) continue;
+            Element aTag = pTag.select("a").first();
+            if (aTag == null) continue;
+//            if (aTag == null) {
+//                System.out.println("caps user tag is null");
+//                return;
+//            }
+            this.capsUsers.add(aTag.text());
+            this.allUsers.add(aTag.text());
 
+        }
+        for (String postLink : this.academicPostLinks) {
+            try {
+                this.currentDoc = Jsoup.connect(postLink).get();
+            } catch (IOException e) {
+                return;
+            }
+            Element pTag = this.currentDoc.getElementsByClass("tagline").first();
+            if (pTag == null) continue;
+            Element aTag = pTag.select("a").first();
+            if (aTag == null) continue;
+//            if (aTag == null) {
+//                System.out.println("academic user tag is null");
+//                return;
+//            }
+            this.academicUsers.add(aTag.text());
+            this.allUsers.add(aTag.text());
+        }
+        this.allUsers = new ArrayList<String>(new HashSet<String>(this.allUsers)); // removing duplicates across the users
+        System.out.println("length of allUsers: " + this.allUsers.size());
+        System.out.println(this.allUsers);
+    }
+
+    public void createAffiliationNetwork() {
+        this.affiliationNetwork = new int[this.allUsers.size()][2];
+        ArrayList<Integer> userCategories = new ArrayList<Integer>();
+        int index = 0;
+        for (String user : this.allUsers) {
+            if (this.capsUsers.contains(user) && this.academicUsers.contains(user)) {
+                this.affiliationNetwork[index][1] = 3; // user made both an academic and a CAPS post
+                userCategories.add(3);
+            } else if (this.academicUsers.contains(user)) {
+                this.affiliationNetwork[index][1] = 2; // user only made an academic post
+                userCategories.add(2);
+            } else if (this.capsUsers.contains(user)) {
+                this.affiliationNetwork[index][1] = 1; // user only made a CAPS post
+                userCategories.add(1);
+            }
+            index++;
+        }
+        System.out.println(this.affiliationNetwork);
+        System.out.println(userCategories);
+    }
+
+}
