@@ -16,3 +16,7 @@ Breakdown of Work:
 - Augustin: Points and upvote/downvote ratio
 - Sam: Cosine similarity
 - Everyone: worked on writeup, data visualizations, final integration of project code
+
+Relevant Links:
+- Github repo for the project: https://github.com/rohitjagga02/nets150-final-project
+- Main data source (r/UPenn subreddit): https://www.reddit.com/r/UPenn/
