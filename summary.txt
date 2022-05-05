@@ -1,0 +1,18 @@
+Project Name: M.A.P. (Mental Health & Academics at Penn)
+
+Project Description: In this project, we wanted to analyze the relationship between CAPS/mental health and academics, as represented by 
+Reddit posts on the r/UPenn subreddit. Our motivation for this is that given final exams are currently underway, we suspected that there 
+might be some relationship between CAPS-related posts and academic-related posts that we could find evidence of in the subreddit. For this
+reason, we conducted an analysis on the relationship between mental health (CAPS) and academics, through several hypotheses as described in
+our final report. These hypotheses included analyzing cosine similarity, points & upvote/downvote ratios, sentiment analysis, and affiliation
+networks.
+
+Project Categories:
+- Document Search
+- Social Networks (+graphs)
+
+Breakdown of Work:
+- Rohit: Sentiment analysis + Affiliation network graph
+- Augustin: Points and upvote/downvote ratio
+- Sam: Cosine similarity
+- Everyone: worked on writeup, data visualizations, final integration of project code
